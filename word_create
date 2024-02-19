@@ -1,0 +1,191 @@
+#########################################################################
+#
+# made by Marshaw
+#
+# excel的起始日期是1899-12-30
+#
+# 最新更新：9/1/2024
+# 自动生成word档案
+#
+#######################################################################
+
+rm(list=ls())
+
+library(readxl)
+library(dplyr)
+library(openxlsx)
+library(officer)
+library(flextable)
+
+############################################。资料导入。 #################################################################
+# 选择文件并返回文件路径
+file_path <- file.choose()
+
+# 检查是否选择了文件
+if (!is.null(file_path)) {
+  # 打开文件
+  file <- file(file_path, "r")
+  # 读取文件内容
+  file_contents <- readLines(file)
+  # 输出文件内容
+  cat(file_contents, sep = "\n")
+  # 关闭文件
+  close(file)
+} else {
+  # 用户取消了文件选择
+  cat("未选择文件。\n")
+}
+
+library(readxl)
+data_now <- readxl::read_excel(file_path)
+############################################。资料导入。 ############################################################
+# 安装和加载所需的包
+library(lubridate)
+# 获取当前日期和时间
+current_date <- Sys.Date()
+current_datetime <- Sys.time()
+# 计算第一个日期（14天前）
+first_date <- current_date - days(14)
+# 计算第二个日期（昨天）
+second_date <- current_date - days(1)
+# 格式化日期
+first_month <- format(first_date, "%m")
+first_day <- format(first_date, "%d")
+second_month <- format(second_date, "%m")
+second_day <- format(second_date, "%d")
+
+data_now1 <- data_now %>% filter(data_now$登记日期 > "2023-12-25")
+data_now1 <- data_now1 %>% filter(data_now1$登记日期 < second_date)
+
+# 创建标题
+title <- paste(first_month,"月",first_day,"日", "-", second_month,"月",second_day,"日", " 处置不规范", sep="")
+title
+############################################。资料导入。 #################################################################################
+
+# 使用group_by和summarize计算每个状态的计数
+result <- data_now1 %>%
+  group_by(抽检模块) %>%
+  summarize(计数 = n())
+result <- result[order(result$计数, decreasing = T),]
+data_now <- data_now1
+data_duizhang <- data_now[data_now$抽检模块 == "对账运营",]
+data_now <- data_now[data_now$抽检模块 != "对账运营",]
+# 创建一个空的Word文档
+doc <- read_docx()
+# 添加标题
+title_heading <- fp_text(font.size = 20, bold = T)
+format_title_heading <- ftext(paste(title,"报告",sep=""), title_heading) %>% fpar()
+
+doc <- body_add(doc, format_title_heading, style = "Normal") 
+# 添加段落内容
+count_result <- nrow(data_now)
+#'12月11日-12月24日共处置不规范数量40个用户，对账运营20笔。'
+count_result2 <- nrow(data_duizhang) ##这个要改
+text = paste(first_month,"月",first_day,"日", "-", second_month,"月",second_day,"日"," 共处置不规范数量",
+             count_result,"个用户，对账运营", count_result2,"笔", sep="","\n")
+doc <- body_add_par(doc, "\n")
+doc <- body_add_par(doc, text)
+
+# 添加小标题
+title_heading1 <- fp_text(font.size = 18, bold = T)
+title1 = paste("二、各抽检模块处置不规范数据")
+format_title_heading1 <- ftext(title1, title_heading1) %>% fpar()
+doc <- body_add_par(doc, "\n", style = "Normal")
+doc <- body_add(doc, format_title_heading1, style = "Normal")
+
+title_heading2 <- fp_text(font.size = 16, bold = T)
+title2 = paste("1. ",title,"(总量",count_result,")","＆原因分布", sep="")
+format_title_heading2 <- ftext(title2, title_heading2) %>% fpar()
+doc <- body_add_par(doc, "\n", style = "Normal")
+doc <- body_add(doc, format_title_heading2, style = "Normal")
+
+title_heading3 <- fp_text(font.size = 14, bold = T)
+title3 = paste("1) 按抽检模块划分-处置不规范数量(总量",count_result,")＆原因分布",sep="")
+format_title_heading3 <- ftext(title3, title_heading3) %>% fpar()
+doc <- body_add_par(doc, "\n", style = "Normal")
+doc <- body_add(doc, format_title_heading3, style = "Normal")
+#doc <- body_add_par(doc, "\n", style = "Normal")
+
+# 添加一个包含项目符号的列表， 加bullet
+text1 <- paste(title,"数据抽检模块前三名：",sep="")
+doc <- body_add_par(doc, text1, style = "Normal")
+bullet1 <- paste("-",result[1,1],":",result[1,2],"主要问题在于（请编辑）")
+bullet2 <- paste("-",result[2,1],":",result[2,2],"主要问题在于（请编辑）")
+bullet3 <- paste("-",result[3,1],":",result[3,2],"主要问题在于（请编辑）")
+items <- c(bullet1, bullet2, bullet3)
+doc <- body_add_par(doc, bullet1, style = "Normal")
+doc <- body_add_par(doc, bullet2, style = "Normal")
+doc <- body_add_par(doc, bullet3, style = "Normal")
+doc <- body_add_par(doc, "\n", style = "Normal")
+
+# 创建柱状图
+result$抽检模块 <- reorder(result$抽检模块, -result$计数)
+
+library(ggplot2)
+p <- ggplot(result, aes(x = 抽检模块, y = 计数, fill = 抽检模块)) +
+  geom_bar(stat = "identity") +
+  labs(
+    x = "抽检模块",
+    y = NULL,
+    fill = NULL,
+    title = paste("按抽检模块划分-处置不规范数量（总量", sum(result$计数), "）")
+  )+theme_grey(base_family = "STKaiti")+geom_text(aes(label = 计数),position = position_dodge(width = 0.9),vjust = -0.25)
+
+# 显示图表
+print(p)
+doc <- body_add_gg(doc, p)
+
+# 将数据框转换为flextable对象
+#flex_table <- flextable(data)
+# 将flextable对象添加到Word文档
+#oc <- body_add_flextable(doc, value = flex_table)
+
+
+title4 = paste("2）按问题类型划分-处置不规范数量（总量",count_result,")＆原因分布",sep="")
+format_title_heading4 <- ftext(title4, title_heading3) %>% fpar()
+doc <- body_add_par(doc, "\n", style = "Normal")
+doc <- body_add(doc, format_title_heading4, style = "Normal")
+
+"12月11日-12月24日处置不规范数据问题类型前三名：
+- 审核时间过长：14。主要问题在异常涨跌幅审核＆项目方出金审核两个模块审核时间过长。
+- 人工处置不规范：13。主要问题在于法币P2P相关业务办理的人工处置与业务方反馈不符；流动性反馈需做现货禁止买入/卖出处置，遗漏限制现货禁止卖出。
+- 不符合sop流程：6。主要问题在于错充相关业务，误给举报人账号添加标签＆处置；未对拉砸盘pnl＞1万u用户进行风控。"
+# 添加一个包含项目符号的列表， 加bullet
+# 使用group_by和summarize计算导入数据
+result_status <- data_now1 %>%
+  group_by(问题类型) %>%
+  summarize(计数 = n())
+result_status <- result_status[order(result_status$计数, decreasing = T),]
+
+text1 <- paste(title,"数据问题类型前三名：",sep="")
+doc <- body_add_par(doc, text1, style = "Normal")
+bullet4 <- paste("-",result_status[1,1],":",result_status[1,2],"主要问题在于（请编辑）")
+bullet5 <- paste("-",result_status[2,1],":",result_status[2,2],"主要问题在于（请编辑）")
+bullet6 <- paste("-",result_status[3,1],":",result_status[3,2],"主要问题在于（请编辑）")
+items <- c(bullet1, bullet2, bullet3)
+doc <- body_add_par(doc, bullet4, style = "Normal")
+doc <- body_add_par(doc, bullet5, style = "Normal")
+doc <- body_add_par(doc, bullet6, style = "Normal")
+doc <- body_add_par(doc, "\n", style = "Normal")
+
+# 创建第二章柱状图
+result_status$问题类型 <- reorder(result_status$问题类型, -result_status$计数)
+
+library(ggplot2)
+q <- ggplot(result_status, aes(x = 问题类型, y = 计数, fill = 问题类型)) +
+  geom_bar(stat = "identity") +
+  labs(
+    x = "问题类型",
+    y = NULL,
+    fill = NULL,
+    title = paste("按问题类型划分-处置不规范数量（总量", sum(result_status$计数), "）")
+  )+theme_grey(base_family = "STKaiti")+geom_text(aes(label = 计数),position = position_dodge(width = 0.9),vjust = -0.25)
+
+# 显示图表
+print(q)
+doc <- body_add_gg(doc, q)
+
+# 保存Word文档
+docname <- paste("Downloads/",title,"报告",".docx",sep="")
+print(doc, target = docname)
+
